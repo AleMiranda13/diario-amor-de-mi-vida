@@ -31,6 +31,8 @@ const db = getFirestore(app);
 const authView = document.getElementById("authView");
 const appView = document.getElementById("appView");
 
+const adminCard = document.getElementById("adminCard");
+
 const emailEl = document.getElementById("email");
 const passEl = document.getElementById("password");
 const authStatus = document.getElementById("authStatus");
@@ -226,6 +228,18 @@ onAuthStateChanged(auth, async (user) => {
   if (whoami) whoami.textContent = `Tu UID: ${user.uid} (solo para compartirlo una vez si hace falta)`;
 
   await ensureDiaryExists(user.uid);
+
+  // Mostrar/ocultar Admin según owner
+  const diaryRef = doc(db, "diaries", DIARY_ID);
+  const diarySnap = await getDoc(diaryRef);
+
+  if (adminCard) {
+    if (diarySnap.exists() && diarySnap.data().ownerUid === user.uid) {
+      adminCard.classList.remove("hidden");
+    } else {
+      adminCard.classList.add("hidden");
+    }
+  }
 
   const q = query(collection(db, `diaries/${DIARY_ID}/entries`), orderBy("createdAt", "desc"));
   unsub = onSnapshot(
