@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Diario</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>Diario</h1>
+      <p class="sub">Un lugar privado, para que escribas lo que quieras.</p>
+      <p class="hint">Tip: guardá este link en favoritos.</p>
+    </header>
+
+    <section class="cover card">
+        <div class="coverPaper">
+            <div class="coverTitle">Diario</div>
+
+            <div id="typeLine1" class="typeLine" data-text="Este lugar es tuyo. Yo solo hice la puerta."></div>
+            <div id="typeLine2" class="typeLine smallType" data-text="Para que escribas cuando el mundo haga ruido."></div>
+
+            <div class="coverHint">Privado • Suave • Sin apuro</div>
+        </div>
+    </section>
+
+
+    <!-- AUTH -->
+    <section id="authView" class="card">
+      <h2>Ingresar</h2>
+
+      <label>Email</label>
+      <input id="email" type="email" placeholder="tuemail@..." autocomplete="username" />
+
+      <label>Contraseña</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+      <div class="row">
+        <button id="btnLogin">Ingresar</button>
+        <button id="btnRegister" class="ghost">Crear cuenta</button>
+      </div>
+
+      <p id="authStatus" class="hint"></p>
+    </section>
+
+    <!-- APP -->
+    <section id="appView" class="hidden">
+      <section class="card">
+        <div class="row space">
+        <div>
+            <h2>Nueva entrada</h2>
+            <p class="hint" id="whoami"></p>
+        </div>
+        <div class="row">
+            <button id="btnFocus" class="ghost">Modo foco</button>
+            <button id="btnLogout" class="ghost">Salir</button>
+        </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>Fecha</label>
+            <input id="date" type="date" />
+          </div>
+          <div>
+            <label>Título (opcional)</label>
+            <input id="title" type="text" placeholder="..." />
+          </div>
+        </div>
+
+        <label>Texto</label>
+        <textarea id="content" rows="10" placeholder="Escribí acá..."></textarea>
+
+        <div class="row">
+          <button id="btnSave">Guardar</button>
+          <button id="btnClear" class="ghost">Limpiar</button>
+        </div>
+
+        <p id="appStatus" class="hint"></p>
+      </section>
+
+        <section class="card" id="entriesCard">
+            <div class="row space">
+                <h2>Entradas</h2>
+                <input id="search" class="search" type="text" placeholder="Buscar..." />
+            </div>
+            <div id="entries" class="entries"></div>
+        </section>
+
+
+      <section class="card">
+        <h2>Admin (solo vos)</h2>
+        <p class="hint">Primero creás el diario con tu cuenta. Después agregás el UID de ella.</p>
+
+        <label>UID de ella</label>
+        <input id="partnerUid" type="text" placeholder="Pegá el UID acá" />
+
+        <div class="row">
+          <button id="btnAddPartner" class="ghost">Agregar UID al diario</button>
+        </div>
+
+        <p class="hint small">Ella puede ver su UID en la pantalla (arriba) cuando inicie sesión.</p>
+        <p id="adminStatus" class="hint"></p>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
