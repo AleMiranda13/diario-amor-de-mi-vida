@@ -72,12 +72,14 @@
         <label>Texto</label>
         <textarea id="content" rows="10" placeholder="Escribí acá..."></textarea>
 
-        <div class="row">
-          <button id="btnSave">Guardar</button>
-          <button id="btnClear" class="ghost">Limpiar</button>
-        </div>
+      <div class="row">
+        <button id="btnSave">Guardar</button>
+        <button id="btnUpdate" class="hidden">Actualizar</button>
+        <button id="btnCancelEdit" class="ghost hidden">Cancelar edición</button>
+        <button id="btnClear" class="ghost">Limpiar</button>
+      </div>
+      <p id="appStatus" class="hint"></p>
 
-        <p id="appStatus" class="hint"></p>
       </section>
 
         <section class="card" id="entriesCard">
@@ -86,6 +88,7 @@
                 <input id="search" class="search" type="text" placeholder="Buscar..." />
             </div>
             <div id="entries" class="entries"></div>
+            <button id="btnExportPdf" class="ghost">Exportar PDF</button>
         </section>
 
 
