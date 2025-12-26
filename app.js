@@ -20,8 +20,7 @@ const firebaseConfig = {
   appId: "1:393977142911:web:c66fd26be11b741119694a",
 };
 
-
-// ID del diario (dejarlo fijo)
+// ID del diario (fijo, sin "/")
 const DIARY_ID = "diary-20250126";
 
 const app = initializeApp(firebaseConfig);
@@ -46,6 +45,7 @@ const entriesEl = document.getElementById("entries");
 const searchEl = document.getElementById("search");
 
 const btnFocus = document.getElementById("btnFocus");
+
 const adminCard = document.getElementById("adminCard");
 const partnerUidEl = document.getElementById("partnerUid");
 const adminStatus = document.getElementById("adminStatus");
@@ -96,7 +96,25 @@ if (btnFocus) {
   });
 }
 
-// -------- Save entry (FIX permisos)
+// -------- Core: asegurar doc del diario (sin leer)
+async function ensureDiary(uid) {
+  const diaryRef = doc(db, "diaries", DIARY_ID);
+
+  // No hacemos getDoc() acá (evita permission-denied por doc inexistente)
+  await setDoc(
+    diaryRef,
+    {
+      ownerUid: uid,
+      allowedUids: [uid],
+      createdAt: Date.now(),
+    },
+    { merge: true }
+  );
+
+  return diaryRef;
+}
+
+// -------- Save entry (robusto)
 document.getElementById("btnSave").onclick = async () => {
   const user = auth.currentUser;
   if (!user) return;
@@ -111,19 +129,8 @@ document.getElementById("btnSave").onclick = async () => {
   }
 
   await withStatus(appStatus, "Guardando...", async () => {
-    // 1) Asegurar el doc del diario y CONFIRMAR su existencia antes de escribir entries
-    const diaryRef = doc(db, "diaries", DIARY_ID);
-    const snap = await getDoc(diaryRef);
+    await ensureDiary(user.uid);
 
-    if (!snap.exists()) {
-      await setDoc(diaryRef, {
-        ownerUid: user.uid,
-        allowedUids: [user.uid],
-        createdAt: Date.now(),
-      });
-    }
-
-    // 2) Ahora sí, crear la entrada
     const col = collection(db, `diaries/${DIARY_ID}/entries`);
     await addDoc(col, {
       date,
@@ -151,19 +158,12 @@ document.getElementById("btnAddPartner").onclick = async () => {
   }
 
   await withStatus(adminStatus, "Agregando UID...", async () => {
-    const diaryRef = doc(db, "diaries", DIARY_ID);
+    const diaryRef = await ensureDiary(user.uid);
+
     const snap = await getDoc(diaryRef);
+    const data = snap.data();
 
-    if (!snap.exists()) {
-      // Si todavía no existe, lo crea el owner actual (vos)
-      await setDoc(diaryRef, {
-        ownerUid: user.uid,
-        allowedUids: [user.uid],
-        createdAt: Date.now(),
-      });
-    }
-
-    const data = (await getDoc(diaryRef)).data();
+    if (!data) throw new Error("No pude leer el diario (¿rules?).");
 
     // Solo owner puede actualizar (rules también lo exigen)
     if (data.ownerUid !== user.uid) {
@@ -190,25 +190,28 @@ async function withStatus(targetEl, msg, fn) {
     if (targetEl) targetEl.textContent = "Listo.";
   } catch (e) {
     console.error(e);
-    if (targetEl) targetEl.textContent = e?.message || "Ocurrió un error.";
+    if (targetEl) targetEl.textContent = e?.message || e?.code || "Ocurrió un error.";
   }
 }
 
 // -------- Entries subscription & render
-let unsub = null;
+let unsubEntries = null;
+let unsubDiaryDoc = null;
 let entriesCache = [];
 
 onAuthStateChanged(auth, async (user) => {
+  // Cleanup
+  if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+  if (unsubDiaryDoc) { unsubDiaryDoc(); unsubDiaryDoc = null; }
+  entriesCache = [];
+  if (entriesEl) entriesEl.innerHTML = "";
+
   if (!user) {
-    if (unsub) { unsub(); unsub = null; }
     authView?.classList.remove("hidden");
     appView?.classList.add("hidden");
-    entriesEl && (entriesEl.innerHTML = "");
-    entriesCache = [];
-    whoami && (whoami.textContent = "");
-    setDefaultDate();
-
+    if (whoami) whoami.textContent = "";
     if (adminCard) adminCard.classList.add("hidden");
+    setDefaultDate();
 
     if (document.body.classList.contains("focus")) {
       document.body.classList.remove("focus");
@@ -223,34 +226,32 @@ onAuthStateChanged(auth, async (user) => {
 
   if (whoami) whoami.textContent = `Tu UID: ${user.uid} (solo para compartirlo una vez si hace falta)`;
 
-  const diaryRef = doc(db, "diaries", DIARY_ID);
+  // Asegurar doc del diario (sin leer)
+  const diaryRef = await ensureDiary(user.uid);
 
-  // Asegurar doc del diario (si sos el primero en entrar)
-  const snap = await getDoc(diaryRef);
-  if (!snap.exists()) {
-    await setDoc(diaryRef, {
-      ownerUid: user.uid,
-      allowedUids: [user.uid],
-      createdAt: Date.now(),
-    });
-  }
+  // Suscripción al doc del diario: decide si mostrar Admin (solo owner)
+  unsubDiaryDoc = onSnapshot(
+    diaryRef,
+    (snap) => {
+      const data = snap.data();
+      if (!adminCard) return;
 
-  // Mostrar Admin SOLO si sos owner
-  const diarySnap = await getDoc(diaryRef);
-  const diaryData = diarySnap.data();
-
-  if (adminCard) {
-    if (diarySnap.exists() && diaryData?.ownerUid === user.uid) adminCard.classList.remove("hidden");
-    else adminCard.classList.add("hidden");
-  }
+      if (data?.ownerUid === user.uid) adminCard.classList.remove("hidden");
+      else adminCard.classList.add("hidden");
+    },
+    (err) => {
+      console.error(err);
+      // Si no puede leer el doc, ocultamos admin
+      if (adminCard) adminCard.classList.add("hidden");
+    }
+  );
 
   // Suscripción entradas
   const q = query(collection(db, `diaries/${DIARY_ID}/entries`), orderBy("createdAt", "desc"));
-  if (unsub) unsub();
-  unsub = onSnapshot(
+  unsubEntries = onSnapshot(
     q,
-    (snap2) => {
-      entriesCache = snap2.docs.map((d) => ({ id: d.id, ...d.data() }));
+    (snap) => {
+      entriesCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       renderFiltered();
     },
     (err) => {
