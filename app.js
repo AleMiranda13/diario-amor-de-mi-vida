@@ -10,18 +10,19 @@ import {
   query, orderBy, onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-/** 🔧 TU CONFIG (LA TUYA) */
+/** 🔧 Firebase config (tuya) */
 const firebaseConfig = {
   apiKey: "AIzaSyCb8a123qJzz5Ej0PY4hy-feZLX5SfgyR8",
   authDomain: "mi-portfolio-con-db.firebaseapp.com",
   projectId: "mi-portfolio-con-db",
   storageBucket: "mi-portfolio-con-db.firebasestorage.app",
   messagingSenderId: "393977142911",
-  appId: "1:393977142911:web:c66fd26be11b741119694a"
+  appId: "1:393977142911:web:c66fd26be11b741119694a",
 };
 
-// ID del diario (dejalo fijo)
-const DIARY_ID = "26/01/2025";
+
+// ID del diario (dejarlo fijo)
+const DIARY_ID = "diary-20250126";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -30,8 +31,6 @@ const db = getFirestore(app);
 // -------- UI refs
 const authView = document.getElementById("authView");
 const appView = document.getElementById("appView");
-
-const adminCard = document.getElementById("adminCard");
 
 const emailEl = document.getElementById("email");
 const passEl = document.getElementById("password");
@@ -43,14 +42,13 @@ const titleEl = document.getElementById("title");
 const contentEl = document.getElementById("content");
 const appStatus = document.getElementById("appStatus");
 
-const entriesCard = document.getElementById("entriesCard");
 const entriesEl = document.getElementById("entries");
 const searchEl = document.getElementById("search");
 
+const btnFocus = document.getElementById("btnFocus");
+const adminCard = document.getElementById("adminCard");
 const partnerUidEl = document.getElementById("partnerUid");
 const adminStatus = document.getElementById("adminStatus");
-
-const btnFocus = document.getElementById("btnFocus");
 
 // Portada typewriter (2 líneas)
 const type1 = document.getElementById("typeLine1");
@@ -58,7 +56,6 @@ const type2 = document.getElementById("typeLine2");
 
 // -------- Typewriter init
 (async () => {
-  // No rompe si no existe la portada
   if (type1) await typewriter(type1, type1.dataset.text || "", { startDelay: 220 });
   if (type2) await typewriter(type2, type2.dataset.text || "", { startDelay: 120 });
 })();
@@ -88,7 +85,6 @@ if (btnFocus) {
   btnFocus.onclick = () => {
     document.body.classList.toggle("focus");
     btnFocus.textContent = document.body.classList.contains("focus") ? "Salir de foco" : "Modo foco";
-    // Si entra a foco, focus al textarea
     if (document.body.classList.contains("focus")) setTimeout(() => contentEl?.focus(), 50);
   };
 
@@ -100,7 +96,7 @@ if (btnFocus) {
   });
 }
 
-// -------- Save entry
+// -------- Save entry (FIX permisos)
 document.getElementById("btnSave").onclick = async () => {
   const user = auth.currentUser;
   if (!user) return;
@@ -115,8 +111,19 @@ document.getElementById("btnSave").onclick = async () => {
   }
 
   await withStatus(appStatus, "Guardando...", async () => {
-    await ensureDiaryExists(user.uid);
+    // 1) Asegurar el doc del diario y CONFIRMAR su existencia antes de escribir entries
+    const diaryRef = doc(db, "diaries", DIARY_ID);
+    const snap = await getDoc(diaryRef);
 
+    if (!snap.exists()) {
+      await setDoc(diaryRef, {
+        ownerUid: user.uid,
+        allowedUids: [user.uid],
+        createdAt: Date.now(),
+      });
+    }
+
+    // 2) Ahora sí, crear la entrada
     const col = collection(db, `diaries/${DIARY_ID}/entries`);
     await addDoc(col, {
       date,
@@ -128,13 +135,11 @@ document.getElementById("btnSave").onclick = async () => {
 
     titleEl.value = "";
     contentEl.value = "";
-
-    // Si está en foco, mantiene el foco de escritura
     if (document.body.classList.contains("focus")) contentEl.focus();
   });
 };
 
-// -------- Admin: add partner UID
+// -------- Admin: add partner UID (solo owner)
 document.getElementById("btnAddPartner").onclick = async () => {
   const user = auth.currentUser;
   if (!user) return;
@@ -150,12 +155,17 @@ document.getElementById("btnAddPartner").onclick = async () => {
     const snap = await getDoc(diaryRef);
 
     if (!snap.exists()) {
-      await ensureDiaryExists(user.uid);
+      // Si todavía no existe, lo crea el owner actual (vos)
+      await setDoc(diaryRef, {
+        ownerUid: user.uid,
+        allowedUids: [user.uid],
+        createdAt: Date.now(),
+      });
     }
 
     const data = (await getDoc(diaryRef)).data();
 
-    // Solo owner puede actualizar (por rules)
+    // Solo owner puede actualizar (rules también lo exigen)
     if (data.ownerUid !== user.uid) {
       throw new Error("Solo el owner del diario puede agregar UIDs.");
     }
@@ -171,18 +181,6 @@ document.getElementById("btnAddPartner").onclick = async () => {
 // -------- Helpers
 function setDefaultDate() {
   if (dateEl) dateEl.value = new Date().toISOString().slice(0, 10);
-}
-
-async function ensureDiaryExists(ownerUid) {
-  const diaryRef = doc(db, "diaries", DIARY_ID);
-  const snap = await getDoc(diaryRef);
-  if (snap.exists()) return;
-
-  await setDoc(diaryRef, {
-    ownerUid,
-    allowedUids: [ownerUid],
-    createdAt: Date.now(),
-  });
 }
 
 async function withStatus(targetEl, msg, fn) {
@@ -202,18 +200,16 @@ let entriesCache = [];
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
-    if (unsub) {
-      unsub();
-      unsub = null;
-    }
+    if (unsub) { unsub(); unsub = null; }
     authView?.classList.remove("hidden");
     appView?.classList.add("hidden");
     entriesEl && (entriesEl.innerHTML = "");
     entriesCache = [];
-    if (whoami) whoami.textContent = "";
+    whoami && (whoami.textContent = "");
     setDefaultDate();
 
-    // salir de foco si estaba
+    if (adminCard) adminCard.classList.add("hidden");
+
     if (document.body.classList.contains("focus")) {
       document.body.classList.remove("focus");
       if (btnFocus) btnFocus.textContent = "Modo foco";
@@ -227,25 +223,34 @@ onAuthStateChanged(auth, async (user) => {
 
   if (whoami) whoami.textContent = `Tu UID: ${user.uid} (solo para compartirlo una vez si hace falta)`;
 
-  await ensureDiaryExists(user.uid);
-
-  // Mostrar/ocultar Admin según owner
   const diaryRef = doc(db, "diaries", DIARY_ID);
-  const diarySnap = await getDoc(diaryRef);
 
-  if (adminCard) {
-    if (diarySnap.exists() && diarySnap.data().ownerUid === user.uid) {
-      adminCard.classList.remove("hidden");
-    } else {
-      adminCard.classList.add("hidden");
-    }
+  // Asegurar doc del diario (si sos el primero en entrar)
+  const snap = await getDoc(diaryRef);
+  if (!snap.exists()) {
+    await setDoc(diaryRef, {
+      ownerUid: user.uid,
+      allowedUids: [user.uid],
+      createdAt: Date.now(),
+    });
   }
 
+  // Mostrar Admin SOLO si sos owner
+  const diarySnap = await getDoc(diaryRef);
+  const diaryData = diarySnap.data();
+
+  if (adminCard) {
+    if (diarySnap.exists() && diaryData?.ownerUid === user.uid) adminCard.classList.remove("hidden");
+    else adminCard.classList.add("hidden");
+  }
+
+  // Suscripción entradas
   const q = query(collection(db, `diaries/${DIARY_ID}/entries`), orderBy("createdAt", "desc"));
+  if (unsub) unsub();
   unsub = onSnapshot(
     q,
-    (snap) => {
-      entriesCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    (snap2) => {
+      entriesCache = snap2.docs.map((d) => ({ id: d.id, ...d.data() }));
       renderFiltered();
     },
     (err) => {
@@ -260,11 +265,10 @@ searchEl?.addEventListener("input", renderFiltered);
 function renderFiltered() {
   const term = (searchEl?.value || "").toLowerCase().trim();
   const list = term
-    ? entriesCache.filter(
-        (e) =>
-          (e.title || "").toLowerCase().includes(term) ||
-          (e.content || "").toLowerCase().includes(term) ||
-          (e.date || "").toLowerCase().includes(term)
+    ? entriesCache.filter((e) =>
+        (e.title || "").toLowerCase().includes(term) ||
+        (e.content || "").toLowerCase().includes(term) ||
+        (e.date || "").toLowerCase().includes(term)
       )
     : entriesCache;
 
@@ -297,7 +301,6 @@ function renderFiltered() {
     const actions = document.createElement("div");
     actions.className = "actions";
 
-    // Borrar solo si la entrada es del user logueado
     if (e.authorUid === me) {
       const del = document.createElement("button");
       del.className = "ghost";
@@ -323,7 +326,7 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-// -------- Typewriter (con “pausas” tipo máquina)
+// -------- Typewriter (pausas tipo máquina)
 async function typewriter(el, text, opts = {}) {
   const {
     startDelay = 200,
@@ -331,7 +334,7 @@ async function typewriter(el, text, opts = {}) {
     maxDelay = 40,
     commaPause = 120,
     dotPause = 220,
-    longPause = 320
+    longPause = 320,
   } = opts;
 
   if (!el) return;
@@ -344,12 +347,10 @@ async function typewriter(el, text, opts = {}) {
     const ch = text[i];
     let d = rand(minDelay, maxDelay);
 
-    // Pausas naturales por puntuación
     if (ch === "," || ch === ";" || ch === ":") d += commaPause;
     if (ch === "." || ch === "!" || ch === "?") d += dotPause;
     if (ch === "—") d += longPause;
 
-    // Micro jitter para que no sea robótico
     if (Math.random() < 0.08) d += rand(40, 120);
 
     await sleep(d);
